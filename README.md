@@ -1,12 +1,9 @@
 # Telegram-bot
 Telegram bot for daily survey of employees
 
-🌐 v.1.0 🌐
-![image](https://user-images.githubusercontent.com/25991088/158126991-5ebe26f9-7abf-4e34-b352-bd67a17f91c1.png)
+The bot interviews the team with 4 questions
+The data is processed and sent to the MySQL database
 
-
-🔰 v.2.0 🔰
-
-![image](https://user-images.githubusercontent.com/25991088/158286336-9b6d4702-550d-43e2-a4a4-490939705efe.png)
-![image](https://user-images.githubusercontent.com/25991088/158286351-09ae62aa-77e8-4435-9581-df120bcdda03.png)
-![image](https://user-images.githubusercontent.com/25991088/158286359-4eb66cdb-f5bd-482b-9720-0b6cefa132af.png)
+![image](https://user-images.githubusercontent.com/25991088/168784552-be0f437a-6139-4ccd-98fe-7b4620afc9fb.png)
+![image](https://user-images.githubusercontent.com/25991088/168784574-dddb8475-bfd6-4670-a743-fca7864a62b1.png)
+![image](https://user-images.githubusercontent.com/25991088/168784599-dcbc0ca3-cd89-4950-bf4f-09ab7d403cf5.png)
