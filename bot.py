@@ -1,24 +1,17 @@
- # -*- coding: utf-8 -*-
-
-# QUESTION:
-#  Нам нужны вопросы:
-#  1. Где ты территориально находишься?
-#  2. Оцените свое состояние ?
-#  3. Можешь ли ты работать ( фулл/парт/нет)?
-#  4. Необходима ли тебе какая-то орг помощь?
-
+# -*- coding: utf-8 -*-
 # Import Library
+from mysql.connector import MySQLConnection, Error
+from python_mysql_dbconfig import read_db_config
+from telebot import types
+from datetime import date
+from datetime import datetime
+
 import telegram
 import telebot
 import pandas as pd
 import os.path
 import configparser
-
 import today_box
-
-from telebot import types
-from datetime import date
-from datetime import datetime
 
 config = configparser.ConfigParser()
 config.read('config.ini')
@@ -33,99 +26,152 @@ def start(m, res=False):
                      '✌️ *Привіт* Це S-PRO перекличка.\nХочеться бути на зв’язку з нашою великою українською командою у такий час. \n\nЦей бот буде щодня відправляти тобі чотири питання. Будь ласка, відповідай на них до 12:00, аби HR команда могла оперативно моніторити стан співробітників та, за необхідності, допомогти. \n\nНатискай команду 🔻 /today 🔻 і проходь перекличку сьогодні :)',
                      parse_mode=telegram.ParseMode.MARKDOWN)
 
-    user = {'date': date.today(),
-            'time':	datetime.now().strftime("%H:%M:%S"),
-            'username': m.chat.username,
-            'event': 'connect',
-            'event_description': 'done',
-            'first_name': m.chat.first_name,
-            'last_name': m.chat.last_name,
-            'chat_id': m.chat.id}
-
-    # Show new connection:
-    print("\ndate:", date.today(), '\ntime ',	datetime.now().strftime("%H:%M:%S"), " | Законектився працівник | ",  m.chat.username)
-
-    if(os.path.exists('data.csv') == True):
-        df = pd.read_csv("data.csv").append(user, ignore_index = True)
-        df.to_csv("data.csv", index=False)
-    else:
-        print("Error: not find data.csv")
-
-
-# COMMAND: today
-# send questions for answer
+# send daily questions
 @bot.message_handler(commands=["today"])
 def today(m, res=False):
     today_box.today_send(m.chat.id)
 
 
-# Question: Can you work today?
 # SAVE ANSWER
 @bot.callback_query_handler(lambda call: True)
 def handle(call):
-    # MERGE data for answer:
-    answer = {'date': date.today(),
-              'time':	datetime.now().strftime("%H:%M:%S"),
-              'username': call.message.chat.username,
-              'event': str(call.message.text),
-              'event_description': call.data,
-              'first_name': call.message.chat.first_name,
-              'last_name': call.message.chat.last_name,
-              'chat_id': call.message.chat.id}
+    chat_id = call.message.chat.id
+    date_answer = date.today()
+    time_answer = datetime.now().strftime("%H:%M:%S")
+    username = call.message.chat.username
+    first_name = call.message.chat.first_name
+    last_name = call.message.chat.last_name
+    location = "None"
+    event = str(call.message.text)
+    event_description = call.data
 
-    if(os.path.exists('data.csv') == True):
-        df = pd.read_csv("data.csv").append(answer, ignore_index = True)
-        df.to_csv("data.csv", index=False)
-    else:
-        print("Error: not find data.csv")
 
-    # reply_to_user = "🔺" + str(date.today()) + " " + str(call.message.text) + " : *" + str(call.data) + "*  "
+    """ Connect to MySQL database """
+    db_config = read_db_config()
+    conn = None
+    try:
+        conn = MySQLConnection(**db_config)
+        cursor=conn.cursor()
+
+        sql = "INSERT INTO `daily_answers` (`chat_id`, `date_answer`, `time_answer`, `username`, `first_name`, `last_name`, `location`, `event`, `event_description`) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)"
+        cursor.execute(sql, (str(chat_id), str(date_answer), str(time_answer), str(username), str(first_name), str(last_name), str(location), str(event), str(event_description)))
+
+        conn.commit()
+    except Error as error:
+        print("Answer not added: ", str(chat_id), " ", str(date_answer), " ", str(time_answer), " ", str(username), " ", str(first_name), " ", str(last_name), " ", str(location), " ", str(event), " ", str(event_description))
+    finally:
+        if conn is not None and conn.is_connected():
+            conn.close()
+            print('Connection closed | answer added! ')
+
     reply_to_user = "🔸" + str(date.today()) + " " + str(call.message.text) + " : *" + str(call.data) + "*  "
-
     bot.send_message(call.message.chat.id, reply_to_user,
                      parse_mode = telegram.ParseMode.MARKDOWN)
+
 
 
 @bot.message_handler(commands=["newsletter"])
 def answer(message):
     if (message.from_user.id == 809104544):
-        # newsletter = '✌️ *Привет*, это пишет бот-помощник HR команди S-PRO | мы тебя нашли в базе работников и сейчас делаем тест утренней рассылки для опроса :). 💭'
         newsletter = '✌️ *Привіт*'
-        all_users = pd.read_csv('data.csv')['chat_id'].unique()
-        for i in all_users:
-            try:
-                bot.send_message(i,
-                                 newsletter,
-                                 parse_mode=telegram.ParseMode.MARKDOWN)
-                today_box.today_send(i)
-                print("i:", i, " | message send | done ")
-            except:
-                continue
+
+        """ Connect to MySQL database """
+        db_config = read_db_config()
+        conn = None
+        try:
+            conn = MySQLConnection(**db_config)
+            cursor=conn.cursor()
+            sql = "SELECT DISTINCT REPLACE(`chat_id`, '.0', '')  FROM `daily_answers`;"
+            cursor.execute(sql)
+
+            myresult = cursor.fetchall()
+
+            i = 0
+            for x in myresult:
+                chat_id = str(x).split("('")[1].split(".0")[0]
+
+                i = i + 1
+                try:
+                    if ( chat_id != "-1001746503273" and chat_id != "nan',)"):
+                        bot.send_message(chat_id,
+                                         newsletter,
+                                         parse_mode=telegram.ParseMode.MARKDOWN)
+                        today_box.today_send(chat_id)
+                        print(chat_id, "  i:", i, " | message send | done ")
+                except:
+                    continue
+
+        except Error as error:
+            print("Cannot sended daily message :(")
+        finally:
+            if conn is not None and conn.is_connected():
+                conn.close()
+                print('Connection closed | daily message was sended! ')
+
+
+
+@bot.message_handler(commands=["abroad"])
+def answer(message):
+#    if (message.from_user.id == 809104544):
+#        newsletter = '✌️ Привіт ще раз, ми побачили. що ти вибрав свою геолокаці: За кордном,  \nЧи міг би ти нам написати Країну та Місто, де ти зараз перебуваєш ? 🌐'
+#        all_users = pd.read_csv('data_2.csv')
+
+#        'event_description' == 'За кордоном'
+#        'date' == '2022-04-26'
+    #        'chat_id'.unique().tolist()
+    if (message.from_user.id == 809104544):
+        newsletter = '✌️ *Привіт*'
+
+        """ Connect to MySQL database """
+        db_config = read_db_config()
+        conn = None
+        try:
+            conn = MySQLConnection(**db_config)
+            cursor=conn.cursor()
+            sql = "SELECT DISTINCT `chat_id`  FROM `daily_answers`;"
+            cursor.execute(sql)
+
+            myresult = cursor.fetchall()
+
+            for x in myresult:
+                print(x)
+
+                chat_id = x
+                try:
+                    # bot.send_message(chat_id,
+                    #                 newsletter,
+                    #                 parse_mode=telegram.ParseMode.MARKDOWN)
+                    # today_box.today_send(chat_id)
+                    print(chat_id, "  i:", i, " | ABROAD QUIZ | message send | done ")
+                except:
+                    continue
+
+        except Error as error:
+            print("Cannot sended daily message :(")
+        finally:
+            if conn is not None and conn.is_connected():
+                conn.close()
+                print('Connection closed | Anroad Quiz was sended!  ')
+
 
 
 # Reply to user-employee answer:
 @bot.message_handler(content_types=['text'])
 def read_text(message):
-    txt = message.text
-    print("\n", date.today(), " ", datetime.now().strftime("%H:%M:%S"))
-    print(message.chat.username, " ", " | Answer:")
-    print(txt)
+    #if str(message.chat.id) != str(config.get('CHAT','telegram-bot_chat')):
+    #    txt = message.text
+    #    print("\n", date.today(), " ", datetime.now().strftime("%H:%M:%S"))
+    #    print(message.chat.username, " ", " | Answer:", txt)
 
-    answer_text = {'date': date.today(),
-                   'time':	datetime.now().strftime("%H:%M:%S"),
-                   'username': message.chat.username,
-                   'event': 'message',
-                   'event_description': txt,
-                   'first_name': message.chat.first_name,
-                   'last_name': message.chat.last_name,
-                   'chat_id': message.chat.id }
+    #    chat_id = message.chat.id
+    #    full_name = "test"
+    print(message.chat.id, " ", message.text)
+    #    answer = '🔻date: ' + str(date.today()) + '\n🔻time: ' + str(datetime.now().strftime("%H:%M:%S")) + '\n🔻username: @' +  str(message.chat.username) + '\nfull name:     '
 
-    if(os.path.exists('data.csv') == True):
-        df = pd.read_csv("data.csv").append(answer_text, ignore_index = True)
-        df.to_csv("data.csv", index=False, encoding='utf-8')
-    else:
-        print("Error: not find data.csv")
-    bot.send_message(message.chat.id, "Дякую за твоє повідомлення, я передам його HR команді!")
+    #    bot.send_message(message.chat.id, "Дякую за твою відповідь")
+    #    bot.send_message(str(config.get('CHAT','telegram-bot_chat')),
+    #                     answer + "\n\nMessage:\n💭 *" + txt + "*",
+    #                     parse_mode=telegram.ParseMode.MARKDOWN)
 
 
 
